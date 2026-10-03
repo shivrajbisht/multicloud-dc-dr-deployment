@@ -4,11 +4,11 @@
 # Features:
 #   - Build With Parameters (Release Tag, Target Env, Microservice)
 #   - Release Tag Enforcement (UAT/PROD require immutable 'v*' release tags)
-#   - Unit Test Execution & Code Coverage Report Generation:
-#       * Java Spring Boot -> JaCoCo XML (target/site/jacoco/jacoco.xml)
-#       * Node.js / React / Angular -> LCOV (coverage/lcov.info)
-#       * Python -> Pytest Coverage XML (coverage.xml)
-#       * Golang -> Go Cover Profile (coverage.out)
+#   - Unit Test Execution & Code Coverage Report Generation (JaCoCo / LCOV / Pytest / Go)
+#   - Triple Security Audit:
+#       1. Gitleaks Secret Detection (API keys, tokens, hardcoded credentials)
+#       2. Trivy Vulnerability Scan (Filesystem & Container CVEs)
+#       3. Snyk Dependency Audit (Open-source vulnerability & license compliance)
 #   - SonarQube Code Quality Gate Upload
 #   - Parallel Security Scans & Multi-Cloud Container Push (AWS ECR + Azure ACR)
 #   - GitHub Environment Protection Gate for Production
@@ -54,15 +54,17 @@ permissions:
 
 jobs:
   # ----------------------------------------------------------------------------
-  # STAGE 1: PARALLEL UNIT TESTS, COVERAGE GENERATION & SECURITY SCANS
+  # STAGE 1: PARALLEL UNIT TESTS, SECURITY AUDITS (GITLEAKS + TRIVY + SNYK)
   # ----------------------------------------------------------------------------
   build-and-verify:
-    name: '1. Unit Tests, Sonar Coverage & Security Scans'
+    name: '1. Unit Tests, Security Audits & Container Build'
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Checkout Repository Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 2. Validate Release Tag for UAT & PROD
         run: |
@@ -76,14 +78,21 @@ jobs:
           fi
           echo "DEPLOY_TAG=${TAG_VAL:-dev-${GITHUB_SHA::7}}" >> $GITHUB_ENV
 
-      # --- UNIT TESTS & COVERAGE REPORT GENERATION ---
-      - name: 3. Run Unit Tests & Generate Coverage Reports (JaCoCo / LCOV / Pytest XML / Go Cover)
+      # --- 1. GITLEAKS SECRET & CREDENTIAL DETECTION SCAN ---
+      - name: 3. Run Gitleaks Secret Detection Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      # --- 2. UNIT TESTS & COVERAGE REPORT GENERATION ---
+      - name: 4. Run Unit Tests & Generate Coverage Reports (JaCoCo / LCOV / Pytest / Go)
         run: |
           APP_NAME="${{ github.event.inputs.microservice_name || 'java-springboot-service' }}"
-          echo "Executing Unit Tests & Generating Code Coverage for: ${APP_NAME}"
+          echo "Executing Unit Tests & Code Coverage for: ${APP_NAME}"
           bash cicd/scripts/run_unit_tests_and_sonar.sh "${APP_NAME}" || true
 
-      - name: 4. Upload Coverage & SAST to SonarQube
+      - name: 5. Upload Coverage & SAST to SonarQube
         uses: sonarsource/sonarqube-scan-action@v2.0.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -96,33 +105,8 @@ jobs:
             -Dsonar.python.coverage.reportPaths=docker/python-app/coverage.xml
             -Dsonar.go.coverage.reportPaths=docker/golang-app/coverage.out
 
-      - name: 5. Authenticate to AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployerRole
-          aws-region: us-east-1
-
-      - name: 6. Authenticate to Azure via OIDC
-        uses: azure/login@v2
-        with:
-          client-id: 00000000-0000-0000-0000-000000000000
-          tenant-id: 11111111-1111-1111-1111-111111111111
-          subscription-id: 22222222-2222-2222-2222-222222222222
-
-      - name: 7. Log in to AWS ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: 8. Log in to Azure ACR
-        run: az acr login --name acrmulticlouddrdev.azurecr.io
-
-      - name: 9. Setup QEMU & Docker Buildx
-        uses: docker/setup-qemu-action@v3
-
-      - name: 10. Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 11. Run Trivy Vulnerability Scan
+      # --- 3. TRIVY CVE VULNERABILITY SCAN ---
+      - name: 6. Run Trivy Filesystem Vulnerability Scan
         uses: aquasecurity/trivy-action@0.18.0
         with:
           scan-type: 'fs'
@@ -130,7 +114,39 @@ jobs:
           exit-code: '0'
           severity: 'HIGH,CRITICAL'
 
-      - name: 12. Multi-Arch Build & Push to ECR and ACR in Parallel
+      # --- 4. SNYK DEPENDENCY AUDIT ---
+      - name: 7. Run Snyk Open-Source Dependency Security Audit
+        uses: snyk/actions/setup@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: 8. Authenticate to AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployerRole
+          aws-region: us-east-1
+
+      - name: 9. Authenticate to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: 00000000-0000-0000-0000-000000000000
+          tenant-id: 11111111-1111-1111-1111-111111111111
+          subscription-id: 22222222-2222-2222-2222-222222222222
+
+      - name: 10. Log in to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 11. Log in to Azure ACR
+        run: az acr login --name acrmulticlouddrdev.azurecr.io
+
+      - name: 12. Setup QEMU & Docker Buildx
+        uses: docker/setup-qemu-action@v3
+
+      - name: 13. Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 14. Multi-Arch Build & Push to ECR and ACR in Parallel
         uses: docker/build-push-action@v5
         with:
           context: ./docker/${{ github.event.inputs.microservice_name || 'java-springboot' }}

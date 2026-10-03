@@ -4,9 +4,8 @@
 // Architecture Highlights:
 // 1. Build With Parameters (Release Tag, Target Environment, Microservice)
 // 2. PARALLEL STAGES:
-//    - Stage 2A: Unit Test Execution & Code Coverage Report Generation
-//      (JaCoCo XML for Java, LCOV for Node/React, Pytest XML for Python, Go cover for Golang) + SonarQube Upload
-//    - Stage 2B: Trivy Security Scan
+//    - Stage 2A: Unit Test Execution & Code Coverage (JaCoCo XML / LCOV / Pytest / Go) + SonarQube
+//    - Stage 2B: Triple Security Gate (Gitleaks Secret Scan + Trivy Vulnerability Scan + Snyk Dependency Scan)
 //    - Stage 2C: Syft SBOM Cataloging
 // 3. RELEASE TAG ENFORCEMENT: UAT & PROD require immutable Release Tags (v1.*)
 // 4. PARALLEL MULTI-CLOUD SYNC: Push to AWS ECR and Azure ACR simultaneously
@@ -75,26 +74,28 @@ pipeline {
         }
 
         // ----------------------------------------------------------------------
-        // STAGE 2: PARALLEL EXECUTION (UNIT TESTS + SONARQUBE COVERAGE + TRIVY + SBOM)
+        // STAGE 2: PARALLEL EXECUTION (UNIT TESTS + TRIPLE SECURITY AUDIT + SBOM)
         // ----------------------------------------------------------------------
-        stage('2. Parallel Quality, Unit Testing & Security Scans') {
+        stage('2. Parallel Quality, Testing & Security Audit (Gitleaks + Trivy + Snyk)') {
             parallel {
                 stage('2A. Unit Tests & SonarQube Code Coverage') {
                     steps {
                         echo "[PARALLEL A] Running Unit Tests & Generating Code Coverage Reports (JaCoCo XML / LCOV / Pytest XML / Go Cover)..."
                         script {
                             withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                                sh """
-                                    bash cicd/scripts/run_unit_tests_and_sonar.sh "${params.MICROSERVICE_NAME}"
-                                """
+                                sh "bash cicd/scripts/run_unit_tests_and_sonar.sh '${params.MICROSERVICE_NAME}'"
                             }
                         }
                     }
                 }
-                stage('2B. Trivy FS Vulnerability Scan') {
+                stage('2B. Triple Security Audit (Gitleaks + Trivy + Snyk)') {
                     steps {
-                        echo "[PARALLEL B] Running Trivy Filesystem Scan for High/Critical CVEs..."
-                        sh "trivy fs --severity HIGH,CRITICAL --exit-code 0 ."
+                        echo "[PARALLEL B] Running Gitleaks Secret Detection, Trivy Vulnerability Scan & Snyk Dependency Audit..."
+                        script {
+                            withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                                sh "bash cicd/scripts/security_scans.sh . '${ECR_REGISTRY}/${params.MICROSERVICE_NAME}:${env.DEPLOY_TAG}'"
+                            }
+                        }
                     }
                 }
                 stage('2C. Syft SBOM Pre-Cataloging') {
