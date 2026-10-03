@@ -157,6 +157,12 @@ variable "ondemand_user_node_pool" {
 # Resource Tagging Standard
 # ------------------------------------------------------------------------------
 
+variable "app_gateway_id" {
+  type        = string
+  default     = null
+  description = "Optional Azure Application Gateway Resource ID for automatic AGIC ingress integration"
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}

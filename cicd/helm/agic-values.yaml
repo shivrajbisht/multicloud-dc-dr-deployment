@@ -1,0 +1,29 @@
+# ==============================================================================
+# HELM VALUES: AZURE APPLICATION GATEWAY INGRESS CONTROLLER (AGIC)
+# ==============================================================================
+# Chart: ingress-azure / application-gateway-kubernetes-ingress
+# SSL Config: Key Vault Integration + Azure Workload Identity / MSI
+# ==============================================================================
+
+verbosityLevel: 3
+
+appgw:
+  subscriptionId: "00000000-0000-0000-0000-000000000000"
+  resourceGroupName: "rg-multicloud-dev-01"
+  applicationGatewayName: "appgw-dr-dev"
+  usePrivateIP: false
+  shared: false
+
+# Authentication via Workload Identity / User Assigned Managed Identity
+armAuth:
+  type: "aadPodIdentity"
+  identityClientID: "11111111-1111-1111-1111-111111111111"
+  identityResourceID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-multicloud-dev-01/providers/Microsoft.ManagedIdentity/userAssignedIdentities/aks-dr-dev-identity"
+
+# Key Vault Integration for SSL Certificate Sync
+rbac:
+  enabled: true
+
+# Enable AGIC features
+options:
+  attachWafPolicyToListener: true

@@ -4,7 +4,7 @@ An enterprise-grade, 100% reusable, fully parameterized Multi-Cloud Data Center 
 
 ---
 
-## 🗺️ Call Architecture & File Dependency Map ("Kaun si file kisko call kar rahi hai")
+## 🗺️ File Call Hierarchy & Dependency Flow Map
 
 The platform follows a strict 3-tier modular architecture: **Environments (Orchestrator) -> Reusable Modules (Templates) -> Cloud Providers**.
 
@@ -63,9 +63,9 @@ graph TD
 
 ---
 
-## 🛠️ Developer Operations & Module Modification Guide ("Agar kisi module me change karna ho toh kya chalaayein?")
+## 🛠️ Developer Operations & Module Modification Guide
 
-Jab bhi aapko kisi specific module ya component me changes karne hon, toh pure infrastructure ko disturb kiye bina safely modification execute karne ke liye niche diye gaye module-specific commands use karein:
+Whenever you modify a specific module or component, execute targeted commands to apply changes safely without affecting unrelated infrastructure:
 
 ### 1. Terraform Module-Specific Execution Commands
 

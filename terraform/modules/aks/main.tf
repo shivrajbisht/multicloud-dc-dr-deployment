@@ -90,6 +90,14 @@ resource "azurerm_kubernetes_cluster" "aks" {
     load_balancer_sku = "standard"
   }
 
+  # Dynamic AGIC (Application Gateway Ingress Controller) Addon integration
+  dynamic "ingress_application_gateway" {
+    for_each = var.app_gateway_id != null ? [1] : []
+    content {
+      gateway_id = var.app_gateway_id
+    }
+  }
+
   tags = merge(
     var.tags,
     {
