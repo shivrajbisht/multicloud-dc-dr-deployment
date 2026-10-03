@@ -141,9 +141,27 @@ ansible-playbook -i inventory/hosts.ini site.yml --tags dr_failover
 
 ---
 
-### 3. Application Dockerfile & Local Build Validation
+### 3. Unit Testing & SonarQube Code Coverage Report Matrix
 
-Agar aapne kisi specific application Dockerfile ko update kiya hai:
+Every application stack includes automated unit test execution and code coverage report generation configured in both Jenkins (`cicd/Jenkinsfile`) and GitHub Actions (`.github/workflows/app-promotion-pipeline.yml`):
+
+| Language / Framework | Unit Test Execution Command | Output Coverage Report | SonarQube Scanner Property |
+| :--- | :--- | :--- | :--- |
+| **Java Spring Boot** | `mvn clean test jacoco:report` | `target/site/jacoco/jacoco.xml` | `sonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml` |
+| **Node.js / React / Angular** | `npm test -- --coverage` | `coverage/lcov.info` | `sonar.javascript.lcov.reportPaths=coverage/lcov.info` |
+| **Python (pytest)** | `pytest --cov=. --cov-report=xml:coverage.xml` | `coverage.xml` | `sonar.python.coverage.reportPaths=coverage.xml` |
+| **Golang (go test)** | `go test -v -coverprofile=coverage.out ./...` | `coverage.out` | `sonar.go.coverage.reportPaths=coverage.out` |
+
+Automated Execution Script:
+```bash
+bash cicd/scripts/run_unit_tests_and_sonar.sh <MICROSERVICE_NAME>
+```
+
+---
+
+### 4. Application Dockerfile & Local Build Validation
+
+Whenever you update an application Dockerfile:
 
 ```bash
 # A. Build & Test Java Spring Boot Image locally
