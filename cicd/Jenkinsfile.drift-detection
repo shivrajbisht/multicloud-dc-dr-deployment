@@ -1,0 +1,62 @@
+// ==============================================================================
+// ENTERPRISE TERRAFORM INFRASTRUCTURE DRIFT DETECTION PIPELINE (JENKINS)
+// ==============================================================================
+// Schedule: Cron triggered daily at 01:00 AM
+// Purpose:
+//   Executes `terraform plan -detailed-exitcode` to detect uncommitted manual
+//   changes in AWS & Azure cloud infrastructure. Sends Slack alerts on drift.
+// ==============================================================================
+
+pipeline {
+    agent any
+
+    triggers {
+        cron('0 1 * * *') // Daily at 1:00 AM
+    }
+
+    parameters {
+        choice(
+            name: 'TARGET_ENVIRONMENT',
+            choices: ['dev', 'uat', 'prod'],
+            description: 'Environment to audit for Infrastructure Drift'
+        )
+    }
+
+    environment {
+        AWS_ACCOUNT_ID    = '123456789012'
+        AWS_REGION        = 'us-east-1'
+        AWS_OIDC_ROLE_ARN = 'arn:aws:iam::123456789012:role/JenkinsOIDCExecutionRole'
+        SLACK_WEBHOOK_URL = "${env.SLACK_WEBHOOK_URL}"
+    }
+
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('1. AWS/Azure OIDC Auth & Drift Audit') {
+            steps {
+                echo "[STEP 1] Running Terraform Drift Detection on Environment: ${params.TARGET_ENVIRONMENT}..."
+                script {
+                    sh """
+                        echo "Executing terraform drift detection..."
+                        bash cicd/scripts/terraform_drift_detection.sh "${params.TARGET_ENVIRONMENT}"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo "SUCCESS: Infrastructure is 100% in sync. No drift detected in ${params.TARGET_ENVIRONMENT}."
+        }
+        failure {
+            echo "ALERT: Infrastructure drift detected or error in ${params.TARGET_ENVIRONMENT}! Inspect console logs."
+        }
+    }
+}

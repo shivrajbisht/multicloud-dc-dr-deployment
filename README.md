@@ -247,7 +247,24 @@ multicloud-dc-dr-deployment/
 ├── .github/workflows/
 │   ├── app-promotion-pipeline.yml          # GitHub Actions Application Build & Deploy Workflow (Parallel)
 │   ├── container-promotion.yml              # GitHub Actions Dedicated Container Promotion Workflow
-│   └── terraform-ci-cd.yml                  # GitHub Actions Terraform CI/CD Workflow
+│   ├── terraform-ci-cd.yml                  # GitHub Actions Terraform CI/CD Workflow
+│   └── terraform-drift-detection.yml        # Scheduled Automated Infrastructure Drift Detection Workflow
+
+---
+
+## 🔍 Automated Infrastructure Drift Detection System
+
+To prevent uncommitted manual out-of-band changes in the AWS Console or Azure Portal from diverging from declared Terraform state:
+
+1. **Daily Scheduled Cron Job:** `.github/workflows/terraform-drift-detection.yml` runs automatically every night at Midnight UTC (and via `workflow_dispatch`), executing `terraform plan -detailed-exitcode`.
+2. **Exit Code 2 (Drift Triggered):** When exit code is 2 (live cloud resources differ from state):
+   - Automatically creates a GitHub Issue tagged `drift-detection` with resource diff details.
+   - Triggers an instant Slack alert notification.
+3. **Jenkins Scheduled Job:** `cicd/Jenkinsfile.drift-detection` provides an equivalent Jenkins cron trigger (`triggers { cron('0 1 * * *') }`).
+4. **Manual CLI Execution Script:**
+   ```bash
+   bash cicd/scripts/terraform_drift_detection.sh dev
+   ```
 └── gitops/                                  # GitOps Manifests & Kustomize Overlays
     ├── base/
     └── environments/
