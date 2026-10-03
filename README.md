@@ -63,6 +63,121 @@ graph TD
 
 ---
 
+## 🛠️ Developer Operations & Module Modification Guide ("Agar kisi module me change karna ho toh kya chalaayein?")
+
+Jab bhi aapko kisi specific module ya component me changes karne hon, toh pure infrastructure ko disturb kiye bina safely modification execute karne ke liye niche diye gaye module-specific commands use karein:
+
+### 1. Terraform Module-Specific Execution Commands
+
+Always navigate to the active environment directory first:
+```bash
+cd terraform/environments/dev
+```
+
+#### A. AWS VPC Module (`modules/vpc`) Change:
+Agar aapne Subnets, NAT Gateways ya Route Tables change kiye hain:
+```bash
+# 1. Format & Validate
+terraform fmt -recursive ../../modules/vpc
+terraform validate
+
+# 2. Targeted Plan
+terraform plan -target=module.vpc
+
+# 3. Targeted Apply
+terraform apply -target=module.vpc -auto-approve
+```
+
+#### B. AWS EKS Cluster Module (`modules/eks`) Change:
+Agar aapne K8s version, Node Groups, ya Spot/On-Demand instance types change kiye hain:
+```bash
+# Targeted Plan & Apply for EKS only
+terraform plan -target=module.eks_dc_cluster
+terraform apply -target=module.eks_dc_cluster -auto-approve
+```
+
+#### C. Azure VNet & AKS Cluster Modules (`modules/azure_vnet` / `modules/aks`) Change:
+Agar aapne Azure DR VNet ya AKS scale sets modify kiye hain:
+```bash
+# Targeted Apply for Azure VNet & AKS
+terraform plan -target=module.azure_vnet -target=module.aks_dr_cluster
+terraform apply -target=module.azure_vnet -target=module.aks_dr_cluster -auto-approve
+```
+
+#### D. Load Balancer Modules (`modules/alb` / `modules/azure_app_gateway`) Change:
+Agar aapne AWS ALB SSL Cert, Target Group IP routing, ya Azure App Gateway probe change kiya hai:
+```bash
+# Target AWS ALB
+terraform apply -target=module.alb -auto-approve
+
+# Target Azure Application Gateway v2
+terraform apply -target=module.azure_app_gateway -auto-approve
+```
+
+#### E. Security Groups & NSGs (`modules/security_groups` / `modules/azure_nsg`) Change:
+Agar aapne allowed CIDRs, SSH ports, ya Database port rules modify kiye hain:
+```bash
+terraform apply -target=module.security_groups -target=module.azure_nsg -auto-approve
+```
+
+---
+
+### 2. Ansible Role-Specific Execution Commands
+
+Agar aapne kisi specific Ansible security role me change kiya hai:
+
+```bash
+cd ansible
+
+# A. Run Database Hardening Role Only (PostgreSQL 17 TLS & pg_hba rules)
+ansible-playbook -i inventory/hosts.ini site.yml --tags db_hardening
+
+# B. Run Worker Node CIS Hardening Role Only
+ansible-playbook -i inventory/hosts.ini site.yml --tags node_hardening
+
+# C. Run DR Automated Failover Role Only
+ansible-playbook -i inventory/hosts.ini site.yml --tags dr_failover
+```
+
+---
+
+### 3. Application Dockerfile & Local Build Validation
+
+Agar aapne kisi specific application Dockerfile ko update kiya hai:
+
+```bash
+# A. Build & Test Java Spring Boot Image locally
+docker build -t java-springboot-service:local ./docker/java-springboot
+
+# B. Build & Test Node.js App locally
+docker build -t nodejs-service:local ./docker/nodejs-app
+
+# C. Build & Test Angular/React Frontend locally
+docker build -t frontend-service:local ./docker/frontend-app
+
+# D. Build & Test Golang App locally
+docker build -t golang-service:local ./docker/golang-app
+
+# E. Build & Test Python App locally
+docker build -t python-service:local ./docker/python-app
+```
+
+---
+
+### 4. GitOps Manifest Local Validation
+
+Agar aapne Kustomize overlays ya Argo Rollouts manifests modify kiye hain:
+
+```bash
+# Validate DEV overlay rendering locally
+kustomize build gitops/environments/dev
+
+# Validate PROD overlay rendering locally
+kustomize build gitops/environments/prod
+```
+
+---
+
 ## 🗂️ Project Repository Structure
 
 ```
@@ -101,15 +216,18 @@ multicloud-dc-dr-deployment/
 │       └── dr_failover/                     # Automated Multi-Cloud DR Failover Orchestration
 ├── docker/
 │   ├── java-springboot/                     # Java Spring Boot 21 Multi-Arch (amd64/arm64) Dockerfile
-│   └── nodejs-app/                          # Node.js 20 Multi-Arch (amd64/arm64) Dockerfile
+│   ├── nodejs-app/                          # Node.js 20 Multi-Arch (amd64/arm64) Dockerfile
+│   ├── frontend-app/                        # Angular / React Nginx Unprivileged Alpine Dockerfile
+│   ├── golang-app/                          # Go 1.22 Distroless Static Binary Dockerfile
+│   └── python-app/                          # Python 3.12 FastAPI/Flask Virtualenv Dockerfile
 ├── cicd/
-│   ├── Jenkinsfile                          # Main 16-Step Build & Deploy Pipeline
+│   ├── Jenkinsfile                          # Main 16-Step Build & Deploy Pipeline (Parallel Execution + Parameters)
 │   ├── Jenkinsfile.promotion                # Dedicated Container Promotion Pipeline (DEV -> UAT -> PROD)
 │   └── scripts/
 │       ├── sbom_generator.sh                # Syft/Trivy SBOM Generation Script
 │       └── gitops_update.sh                 # GitOps Repo Image Tag Updater Script
 ├── .github/workflows/
-│   ├── app-promotion-pipeline.yml          # GitHub Actions Application Build & Deploy Workflow
+│   ├── app-promotion-pipeline.yml          # GitHub Actions Application Build & Deploy Workflow (Parallel)
 │   ├── container-promotion.yml              # GitHub Actions Dedicated Container Promotion Workflow
 │   └── terraform-ci-cd.yml                  # GitHub Actions Terraform CI/CD Workflow
 └── gitops/                                  # GitOps Manifests & Kustomize Overlays
