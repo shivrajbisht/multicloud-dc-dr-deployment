@@ -1,0 +1,28 @@
+# ==============================================================================
+# ANSIBLE ROLE: KUBERNETES WORKER NODE SECURITY HARDENING
+# ==============================================================================
+---
+- name: Apply CIS Benchmark Kernel Hardening Parameters
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'net.ipv4.tcp_syncookies', value: '1' }
+    - { name: 'net.ipv4.conf.all.accept_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.send_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+    - { name: 'fs.protected_hardlinks', value: '1' }
+    - { name: 'fs.protected_symlinks', value: '1' }
+
+- name: Ensure Auditd Service is Running and Enabled
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: yes
+
+- name: Configure Automatic System Security Updates
+  ansible.builtin.package:
+    name: unattended-upgrades
+    state: present

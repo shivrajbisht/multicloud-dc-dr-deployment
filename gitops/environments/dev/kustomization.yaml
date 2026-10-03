@@ -1,0 +1,26 @@
+# ==============================================================================
+# GITOPS KUSTOMIZATION - DEV ENVIRONMENT
+# ==============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dev
+
+resources:
+  - ../../base/gateway-api/gateway-routes.yaml
+  - ../../base/argo-rollouts/canary-rollout.yaml
+  - ../../base/argo-rollouts/analysis-template.yaml
+  - ../../base/kafka/mirrormaker2.yaml
+  - ../../base/elasticsearch/es-cluster.yaml
+
+namePrefix: dev-
+
+commonLabels:
+  environment: dev
+  managed-by: argocd-gitops
+
+images:
+  - name: 123456789012.dkr.ecr.us-east-1.amazonaws.com/java-springboot-service
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/java-springboot-service
+    newTag: dev-latest

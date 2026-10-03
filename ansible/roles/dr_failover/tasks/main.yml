@@ -1,0 +1,30 @@
+# ==============================================================================
+# ANSIBLE ROLE: AUTOMATED MULTI-CLOUD DISASTER RECOVERY (DR) FAILOVER
+# ==============================================================================
+---
+- name: Step 1 - Check Primary AWS EKS DC Cluster Health Status
+  ansible.builtin.uri:
+    url: "https://eks-dc.internal.company.com/health"
+    status_code: [200]
+  register: dc_health
+  ignore_errors: yes
+
+- name: Step 2 - Execute Automated Traffic Failover if Primary DC is Unreachable
+  when: dc_health.failed is defined and dc_health.failed
+  block:
+    - name: Switch AWS Route 53 / Azure Traffic Manager Failover Target to Azure AKS DR
+      ansible.builtin.command:
+        cmd: "az network traffic-manager endpoint update --name secondary-dr-aks --profile-name frontdoor-tm-profile --resource-group rg-multicloud-prod --type externalEndpoints --priority 1"
+
+    - name: Trigger Emergency Argo CD Application Sync on Azure AKS DR Cluster
+      ansible.builtin.command:
+        cmd: "argocd app sync prod-apps-dr --server argocd.internal.company.com"
+
+    - name: Send Slack Security Alert for DC-DR Failover Execution
+      ansible.builtin.uri:
+        url: "{{ slack_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          text: "🚨 [ALERT] Primary AWS EKS DC Unreachable. Automated DR Failover to Azure AKS Executed Successfully!"
+      when: slack_webhook_url is defined

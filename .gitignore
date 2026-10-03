@@ -1,0 +1,31 @@
+# Terraform ignore rules
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# SSH keys and credentials
+*.pem
+*.key
+*.pub
+id_rsa
+id_rsa.*
+*.pfx
+
+# Ansible ignore rules
+*.retry
+
+# System & IDE ignore rules
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

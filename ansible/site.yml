@@ -1,0 +1,20 @@
+# ==============================================================================
+# MASTER ANSIBLE PLAYBOOK - MULTI-CLOUD DC-DR INFRASTRUCTURE & SECURITY
+# ==============================================================================
+---
+- name: Apply Security Hardening to PostgreSQL 17 Databases
+  hosts: database_servers
+  become: yes
+  roles:
+    - db_hardening
+
+- name: Apply CIS Security Hardening to Kubernetes Worker Nodes
+  hosts: k8s_worker_nodes
+  become: yes
+  roles:
+    - node_hardening
+
+- name: Multi-Cloud Automated DR Failover Orchestration Playbook
+  hosts: control_hosts
+  roles:
+    - dr_failover

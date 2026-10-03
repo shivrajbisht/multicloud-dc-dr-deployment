@@ -1,0 +1,38 @@
+# ==============================================================================
+# ANSIBLE ROLE: POSTGRESQL 17 HARDENING & TLS ENFORCEMENT
+# ==============================================================================
+---
+- name: Ensure PostgreSQL 17 SSL/TLS Configuration Directory Exists
+  ansible.builtin.file:
+    path: /etc/postgresql/17/main/ssl
+    state: directory
+    mode: '0700'
+    owner: postgres
+    group: postgres
+
+- name: Enforce TLS 1.3 / TLS 1.2 in postgresql.conf
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.conf
+    regexp: '^#?ssl_min_protocol_version'
+    line: "ssl_min_protocol_version = 'TLSv1.2'"
+    state: present
+
+- name: Restrict pg_hba.conf to SSL connections only (Deny Unencrypted Clients)
+  ansible.builtin.blockinfile:
+    path: /etc/postgresql/17/main/pg_hba.conf
+    block: |
+      # ENFORCE TLS IN-TRANSIT SECURITY RULE
+      hostssl all all 0.0.0.0/0 md5
+      hostnossl all all 0.0.0.0/0 reject
+    state: present
+
+- name: Apply Kernel Performance Tuning for PostgreSQL 17
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'vm.overcommit_memory', value: '2' }
+    - { name: 'vm.swappiness', value: '10' }
+    - { name: 'net.core.somaxconn', value: '4096' }

@@ -1,0 +1,49 @@
+# ==============================================================================
+# ELASTICSEARCH DC-DR CLUSTER SPECIFICATION (ECK OPERATOR)
+# API Version: elasticsearch.k8s.elastic.co/1
+# Features: Cross-Cluster Replication (CCR), 3 Node HA Pool, Storage Claims
+# ==============================================================================
+
+apiVersion: elasticsearch.k8s.elastic.co/1
+kind: Elasticsearch
+metadata:
+  name: multicloud-elasticsearch
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: dc-dr-storage
+spec:
+  version: 8.12.0
+  nodeSets:
+    - name: default
+      count: 3
+      config:
+        node.store.allow_mmap: false
+        # Configure Remote Cluster Seed for Cross-Cluster Replication (EKS <-> AKS)
+        cluster.remote:
+          dr-remote-cluster:
+            seeds:
+              - "elasticsearch-dr-es-transport.elastic-system.svc.cluster.local:9300"
+      podTemplate:
+        metadata:
+          labels:
+            app: elasticsearch
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: 4Gi
+                requests:
+                  cpu: "1"
+                  memory: 2Gi
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 100Gi

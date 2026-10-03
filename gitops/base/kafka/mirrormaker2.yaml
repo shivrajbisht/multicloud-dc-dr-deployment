@@ -1,0 +1,56 @@
+# ==============================================================================
+# STRIMZI KAFKA MIRRORMAKER 2 MANIFEST (DC-DR CROSS-CLOUD DATA REPLICATION)
+# API Version: kafka.strimzi.io/v1beta2
+# Replicates topics, offsets, and ACLs from AWS EKS (DC) to Azure AKS (DR)
+# ==============================================================================
+
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaMirrorMaker2
+metadata:
+  name: multicloud-dc-dr-mirrormaker2
+  namespace: kafka-system
+  labels:
+    app.kubernetes.io/name: kafka-mirrormaker2
+    app.kubernetes.io/component: dc-dr-sync
+spec:
+  version: 3.6.0
+  replicas: 3
+  connectCluster: "dr-cluster-aks"
+  clusters:
+    # Primary Data Center Kafka Cluster (AWS EKS)
+    - alias: "dc-cluster-eks"
+      bootstrapServers: "kafka-eks-bootstrap.kafka-system.svc.cluster.local:9092"
+      tls:
+        trustedCertificates: []
+    # Disaster Recovery Kafka Cluster (Azure AKS)
+    - alias: "dr-cluster-aks"
+      bootstrapServers: "kafka-aks-bootstrap.kafka-system.svc.cluster.local:9092"
+      tls:
+        trustedCertificates: []
+
+  mirrors:
+    - sourceCluster: "dc-cluster-eks"
+      targetCluster: "dr-cluster-aks"
+
+      # MirrorMaker 2 Source Connector settings
+      sourceConnector:
+        tasksMax: 6
+        config:
+          replication.factor: "3"
+          offset-syncs.topic.replication.factor: "3"
+          sync.topic.acls: "true"
+          sync.topic.configs: "true"
+          refresh.topics.interval.seconds: "10"
+
+      # Checkpoint Connector for consumer group offsets synchronization
+      checkpointConnector:
+        tasksMax: 3
+        config:
+          checkpoints.topic.replication.factor: "3"
+          refresh.groups.interval.seconds: "10"
+          sync.group.offsets.enabled: "true"
+          emit.checkpoints.interval.seconds: "20"
+
+      # Replicate core application domain topics across clouds
+      topicsPattern: "orders-.*|payments-.*|customers-.*|inventory-.*"
+      groupsPattern: ".*"

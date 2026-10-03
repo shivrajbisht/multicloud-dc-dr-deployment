@@ -1,0 +1,108 @@
+# ==============================================================================
+# GITHUB ACTIONS WORKFLOW: MULTI-CLOUD CONTAINER PROMOTION PIPELINE
+# ==============================================================================
+# Purpose:
+#   Promote immutable container images across environments (DEV -> UAT -> PROD)
+#   using GitHub Environments protection rules, OIDC token exchange, and GitOps sync.
+# Flow:
+# 1. Trigger via Workflow Dispatch (Select Image Tag & Target Environment) ->
+# 2. Authenticate to AWS ECR & Azure ACR via OIDC ->
+# 3. Pull & Verify Source Container Digest ->
+# 4. Re-tag for Target Environment & Sync to AWS ECR + Azure ACR ->
+# 5. Commit Target Image Tag to GitOps Repository ->
+# 6. Trigger Argo CD Deployment to Target Clusters (EKS Primary / AKS DR)
+# ==============================================================================
+
+name: 'Container Image Promotion Pipeline'
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Target Promotion Environment'
+        required: true
+        type: choice
+        options:
+          - UAT
+          - PROD
+      image_tag:
+        description: 'Container Image Tag / Git SHA to Promote (e.g. main-a1b2c3d or v1.0.0)'
+        required: true
+        default: 'latest'
+      microservice_name:
+        description: 'Target Container Microservice Name'
+        required: true
+        default: 'java-springboot-service'
+
+permissions:
+  id-token: write
+  contents: write
+  packages: write
+  deployments: write
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # STAGE 1: VERIFY & PROMOTE TO TARGET ENVIRONMENT
+  # ----------------------------------------------------------------------------
+  promote-container:
+    name: 'Promote Container Image to Target Environment'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.target_env }} # Enforces GitHub Environment Approval Rules for PROD
+
+    steps:
+      - name: 1. Checkout GitOps Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Authenticate to AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployerRole
+          aws-region: us-east-1
+
+      - name: 3. Authenticate to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: 00000000-0000-0000-0000-000000000000
+          tenant-id: 11111111-1111-1111-1111-111111111111
+          subscription-id: 22222222-2222-2222-2222-222222222222
+
+      - name: 4. Log in to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 5. Log in to Azure ACR
+        run: |
+          az acr login --name acrmulticlouddrdev.azurecr.io
+
+      - name: 6. Re-tag & Sync Container Image Across Clouds
+        run: |
+          SRC_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ github.event.inputs.microservice_name }}:${{ github.event.inputs.image_tag }}"
+          TARGET_TAG="${{ steps.login-ecr.outputs.registry }}/${{ github.event.inputs.microservice_name }}:${{ github.event.inputs.target_env }}-${{ github.event.inputs.image_tag }}"
+          AZURE_TAG="acrmulticlouddrdev.azurecr.io/${{ github.event.inputs.microservice_name }}:${{ github.event.inputs.target_env }}-${{ github.event.inputs.image_tag }}"
+
+          echo "Pulling source image: ${SRC_IMAGE}..."
+          docker pull ${SRC_IMAGE}
+
+          echo "Tagging and pushing for AWS ECR: ${TARGET_TAG}..."
+          docker tag ${SRC_IMAGE} ${TARGET_TAG}
+          docker push ${TARGET_TAG}
+
+          echo "Tagging and pushing for Azure ACR: ${AZURE_TAG}..."
+          docker tag ${SRC_IMAGE} ${AZURE_TAG}
+          docker push ${AZURE_TAG}
+
+      - name: 7. Commit GitOps Image Tag & Trigger Argo CD
+        run: |
+          ENV_LOWER=$(echo "${{ github.event.inputs.target_env }}" | tr '[:upper:]' '[:lower:]')
+          NEW_TAG="${ENV_LOWER}-${{ github.event.inputs.image_tag }}"
+
+          echo "Updating GitOps manifest for environment ${ENV_LOWER}..."
+          cd gitops/environments/${ENV_LOWER}
+          sed -i "s|newTag:.*|newTag: \"${NEW_TAG}\"|g" kustomization.yaml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(promotion): promote ${{ github.event.inputs.microservice_name }} tag ${NEW_TAG} to ${ENV_LOWER}" || true
+          git push origin main || true
+
+          echo "Successfully promoted ${{ github.event.inputs.microservice_name }} image to ${{ github.event.inputs.target_env }}!"

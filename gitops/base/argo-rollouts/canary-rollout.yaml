@@ -1,0 +1,80 @@
+# ==============================================================================
+# ARGO ROLLOUT SPECIFICATION (CANARY STRATEGY WITH AUTOMATED METRIC CHECK)
+# API Version: argoproj.io/v1alpha1
+# Features: Step-wise traffic weight shift, Prometheus analysis, Auto-Rollback
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: java-springboot-rollout
+  namespace: default
+  labels:
+    app: java-springboot-app
+    app.kubernetes.io/name: java-springboot-app
+spec:
+  replicas: 5
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: java-springboot-app
+
+  strategy:
+    canary:
+      # Reference stable and canary Services managed by Gateway API / Ingress
+      stableService: java-springboot-stable-svc
+      canaryService: java-springboot-canary-svc
+
+      # Canary Promotion Steps with Automated Analysis Gates
+      steps:
+        # Step 1: Route 20% traffic to Canary pod instance
+        - setWeight: 20
+        - pause: { duration: 5m }
+
+        # Step 2: Run Prometheus Analysis Template Gate to verify HTTP error rates & latency
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate-analysis
+            args:
+              - name: service-name
+                value: java-springboot-canary-svc
+
+        # Step 3: Shift weight to 50%
+        - setWeight: 50
+        - pause: { duration: 10m }
+
+        # Step 4: Shift weight to 80%
+        - setWeight: 80
+        - pause: { duration: 5m }
+
+  template:
+    metadata:
+      labels:
+        app: java-springboot-app
+    spec:
+      containers:
+        - name: java-springboot-app
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/java-springboot-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5

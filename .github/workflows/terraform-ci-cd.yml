@@ -1,0 +1,103 @@
+# ==============================================================================
+# GITHUB ACTIONS WORKFLOW: TERRAFORM INFRASTRUCTURE CI/CD (OIDC AUTHENTICATED)
+# ==============================================================================
+# Triggers:
+#   - Pull Requests to 'main': Runs terraform fmt, validate & terraform plan
+#   - Push to 'main': Runs terraform apply via passwordless AWS & Azure OIDC
+# Permissions:
+#   id-token: write (MANDATORY for GitHub OIDC token exchange)
+#   contents: read
+# ==============================================================================
+
+name: 'Terraform Multi-Cloud Infrastructure CI/CD'
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+
+permissions:
+  id-token: write # Required for GitHub OIDC Authentication
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: 'Terraform Plan & Apply (AWS & Azure OIDC)'
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      # ------------------------------------------------------------------------
+      # STEP 1: CHECKOUT REPOSITORY SOURCE CODE
+      # ------------------------------------------------------------------------
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------------
+      # STEP 2: SETUP TERRAFORM CLI ENVIRONMENT
+      # ------------------------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      # ------------------------------------------------------------------------
+      # STEP 3: AWS OIDC AUTHENTICATION (PASSWORDLESS IAM ROLE ASSUME)
+      # ------------------------------------------------------------------------
+      - name: Authenticate to AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployerRole
+          aws-region: us-east-1
+          role-session-name: GitHubActionsTerraformSession
+
+      # ------------------------------------------------------------------------
+      # STEP 4: AZURE OIDC AUTHENTICATION (PASSWORDLESS FEDERATED CREDENTIAL)
+      # ------------------------------------------------------------------------
+      - name: Authenticate to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: 00000000-0000-0000-0000-000000000000
+          tenant-id: 11111111-1111-1111-1111-111111111111
+          subscription-id: 22222222-2222-2222-2222-222222222222
+
+      # ------------------------------------------------------------------------
+      # STEP 5: TERRAFORM FORMAT & VALIDATION
+      # ------------------------------------------------------------------------
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Init
+        run: |
+          cd terraform/environments/dev
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          cd terraform/environments/dev
+          terraform validate
+
+      # ------------------------------------------------------------------------
+      # STEP 6: TERRAFORM PLAN (ON PULL REQUEST OR PUSH)
+      # ------------------------------------------------------------------------
+      - name: Terraform Plan
+        run: |
+          cd terraform/environments/dev
+          terraform plan -no-color -out=tfplan
+
+      # ------------------------------------------------------------------------
+      # STEP 7: TERRAFORM APPLY (ON MERGE TO MAIN BRANCH ONLY)
+      # ------------------------------------------------------------------------
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cd terraform/environments/dev
+          terraform apply -auto-approve tfplan
