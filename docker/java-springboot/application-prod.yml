@@ -1,0 +1,45 @@
+# ==============================================================================
+# SPRING BOOT SECURE CONFIGURATION (application-prod.yml)
+# ==============================================================================
+# Secrets and database credentials are NEVER hardcoded.
+# They are dynamically injected via Kubernetes External Secrets Operator (ESO)
+# backed by AWS Secrets Manager or Azure Key Vault.
+# ==============================================================================
+
+spring:
+  application:
+    name: ${APP_NAME:java-springboot-service}
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:appdb}?sslmode=require
+    username: ${DB_USERNAME:dbadmin}
+    password: ${DB_PASSWORD} # Injected from Vault / External Secrets
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:20}
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_AUTH_TOKEN} # Injected securely from Key Vault / Secrets Manager
+      ssl:
+        enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka.internal:9092}
+    properties:
+      security.protocol: SSL
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never # Hide internal system trace in health endpoint for security

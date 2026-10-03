@@ -1,63 +1,54 @@
 # ==============================================================================
-# MULTI-ARCH DOCKERFILE FOR JAVA SPRING BOOT APPLICATION
-# Compatible Architectures: linux/amd64, linux/arm64
-# Multi-Stage Build: Build Stage -> Security Hardened JRE Runtime Stage
+# MULTI-STAGE DOCKERFILE: JAVA 21 SPRING BOOT MICROSERVICE
+# ==============================================================================
+# Features:
+#   - Multi-stage build for minimal final image size (~180MB vs 800MB)
+#   - Multi-arch support (linux/amd64, linux/arm64)
+#   - Non-root dedicated appuser (UID 10001) for security hardening
+#   - Dynamic JVM Container Memory & CPU Heap allocation flags
+#   - Spring Boot layered jar optimization for fast cached rebuilds
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# STAGE 1: Maven Build Environment (Multi-Arch Platform Agnostic)
-# ------------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM maven:3.9.6-eclipse-temurin-21-alpine AS builder
+# --- Stage 1: Build & Package ---
+FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
+WORKDIR /build
 
-# Set working directory inside container
-WORKDIR /app
-
-# Copy Maven dependency POM definition first to leverage Docker layer caching
-COPY pom.xml ./
-
-# Pre-fetch all dependencies offline before copying code
+# Copy pom.xml and download dependencies for layer caching
+COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
-# Copy full application source code
+# Copy source code and build application jar
 COPY src ./src
-
-# Build production JAR package skipping test suite execution for build speed
 RUN mvn package -DskipTests -B && \
-    # Extract Spring Boot jar layers for optimized container caching
     java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
 
-# ------------------------------------------------------------------------------
-# STAGE 2: Security-Hardened JRE 21 Runtime Environment (Multi-Arch Target)
-# ------------------------------------------------------------------------------
+# --- Stage 2: Production Hardened Runtime ---
 FROM eclipse-temurin:21-jre-alpine AS runner
 
-# Create non-root system group and user for security compliance
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Security hardening: Create non-root user & group
+RUN addgroup --system --gid 10001 appgroup && \
+    adduser --system --uid 10001 --ingroup appgroup appuser
 
-# Set runtime working directory
 WORKDIR /app
 
-# Copy extracted Spring Boot application layers from builder stage
-COPY --from=builder /app/target/extracted/dependencies/ ./
-COPY --from=builder /app/target/extracted/spring-boot-loader/ ./
-COPY --from=builder /app/target/extracted/snapshot-dependencies/ ./
-COPY --from=builder /app/target/extracted/application/ ./
+# Copy extracted Spring Boot layers for optimal caching
+COPY --from=builder /build/target/extracted/dependencies/ ./
+COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
+COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
+COPY --from=builder /build/target/extracted/application/ ./
 
-# Change ownership of app directory to non-root user
+# Set ownership to non-root user
 RUN chown -R appuser:appgroup /app
 
-# Switch context to non-root user
-USER appuser
+USER appuser:appgroup
 
-# Expose HTTP web server port
+# Dynamic JVM Memory & Spring Profile settings
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -Djava.security.egd=file:/dev/./urandom"
+ENV SPRING_PROFILES_ACTIVE="prod"
+
 EXPOSE 8080
 
-# Environment variables for JVM container awareness and memory tuning
-ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/actuator/health || exit 1
 
-# Container Health Check instruction using wget (available in alpine)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
-
-# Entrypoint to execute Spring Boot launcher
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]

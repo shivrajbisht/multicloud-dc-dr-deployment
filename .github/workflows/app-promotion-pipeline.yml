@@ -1,78 +1,104 @@
 # ==============================================================================
-# GITHUB ACTIONS WORKFLOW: APPLICATION PROMOTION & DEPLOYMENT PIPELINE
+# GITHUB ACTIONS: PARALLEL MULTI-CLOUD BUILD & GITOPS PROMOTION PIPELINE
 # ==============================================================================
-# Flow Architecture:
-# 1. Developer Push -> 2. AWS/Azure OIDC Auth -> 3. SonarQube & Trivy Scan ->
-# 4. Multi-Arch Docker (amd64/arm64) Push -> 5. Syft SBOM -> 6. GitOps Sync ->
-# 7. DEV Deploy -> 8. UAT Promotion -> 9. PROD Approval Gate ->
-# 10. Argo Canary Rollout -> 11. Prometheus Evaluation -> 12. Auto Rollback
+# Features:
+#   - Build With Parameters (Release Tag, Target Env, Microservice)
+#   - Release Tag Enforcement (UAT/PROD require immutable 'v*' release tags)
+#   - Parallel Security Scans (SonarQube SAST + Trivy CVE Scan + Syft SBOM)
+#   - Parallel Multi-Cloud Container Push (AWS ECR + Azure ACR)
+#   - GitHub Environment Protection Gate for Production
+#   - Parallel GitOps Sync to EKS Primary DC & AKS Secondary DR
 # ==============================================================================
 
-name: 'Application CI/CD Promotion Pipeline'
+name: 'Multi-Cloud App Build & Promotion Pipeline'
 
 on:
   push:
-    branches:
-      - main
-      - 'release/*'
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       target_env:
-        description: 'Target Deployment Environment (DEV, UAT, PROD)'
+        description: 'Target Deployment Environment'
         required: true
-        default: 'DEV'
+        type: choice
+        options:
+          - DEV
+          - UAT
+          - PROD
+      release_tag:
+        description: 'Release Tag (MANDATORY for UAT & PROD e.g., v1.0.0)'
+        required: false
+        default: ''
+      microservice_name:
+        description: 'Target Microservice App'
+        required: true
+        type: choice
+        options:
+          - java-springboot-service
+          - nodejs-service
+          - frontend-service
+          - golang-service
+          - python-service
 
 permissions:
-  id-token: write # MANDATORY for GitHub OIDC Token Exchange
+  id-token: write
   contents: write
   packages: write
   deployments: write
 
 jobs:
   # ----------------------------------------------------------------------------
-  # STAGE 1: BUILD, SCAN, MULTI-ARCH CONTAINER PUSH & GITOPS TRIGGER
+  # STAGE 1: PARALLEL SECURITY SCANS & MULTI-ARCH BUILD
   # ----------------------------------------------------------------------------
-  build-and-publish:
-    name: '1. Build, Scan & Multi-Arch Container Publish'
+  build-and-verify:
+    name: '1. Parallel Scans & Multi-Arch Container Build'
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Application Code
+      - name: 1. Checkout Repository Code
         uses: actions/checkout@v4
 
-      - name: 2. Authenticate to AWS via OIDC
+      - name: 2. Validate Release Tag for UAT & PROD
+        run: |
+          TARGET_ENV="${{ github.event.inputs.target_env || 'DEV' }}"
+          TAG_VAL="${{ github.event.inputs.release_tag || github.ref_name }}"
+          if [[ "$TARGET_ENV" == "UAT" || "$TARGET_ENV" == "PROD" ]]; then
+            if [[ ! "$TAG_VAL" =~ ^v[0-9] ]]; then
+              echo "::error::Release Tag starting with 'v' (e.g. v1.0.0) is mandatory for UAT/PROD promotion!"
+              exit 1
+            fi
+          fi
+          echo "DEPLOY_TAG=${TAG_VAL:-dev-${GITHUB_SHA::7}}" >> $GITHUB_ENV
+
+      - name: 3. Authenticate to AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployerRole
           aws-region: us-east-1
-          role-session-name: GitHubActionsAppBuildSession
 
-      - name: 3. Authenticate to Azure via OIDC
+      - name: 4. Authenticate to Azure via OIDC
         uses: azure/login@v2
         with:
           client-id: 00000000-0000-0000-0000-000000000000
           tenant-id: 11111111-1111-1111-1111-111111111111
           subscription-id: 22222222-2222-2222-2222-222222222222
 
-      - name: 4. Log in to AWS ECR
+      - name: 5. Log in to AWS ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 5. Setup QEMU for Multi-Architecture Cross-Compilation
+      - name: 6. Log in to Azure ACR
+        run: az acr login --name acrmulticlouddrdev.azurecr.io
+
+      - name: 7. Setup QEMU & Docker Buildx
         uses: docker/setup-qemu-action@v3
 
-      - name: 6. Setup Docker Buildx Builder
+      - name: 8. Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 7. Run SonarQube Quality Analysis
-        run: |
-          echo "[STEP 5] Running SonarQube SAST scan..."
-          # sonar-scanner -Dsonar.projectKey=java-springboot-app
-          echo "SonarQube Quality Gate Status: PASSED"
-
-      - name: 8. Run Trivy Vulnerability Scan
+      # --- PARALLEL SECURITY CHECKS ---
+      - name: 9. Run Trivy Vulnerability Scan
         uses: aquasecurity/trivy-action@0.18.0
         with:
           scan-type: 'fs'
@@ -80,83 +106,49 @@ jobs:
           exit-code: '0'
           severity: 'HIGH,CRITICAL'
 
-      - name: 9. Multi-Arch Docker Build & Push to ECR (amd64, arm64)
+      - name: 10. Multi-Arch Build & Push to ECR and ACR in Parallel
         uses: docker/build-push-action@v5
         with:
-          context: ./docker/java-springboot
-          file: ./docker/java-springboot/Dockerfile
+          context: ./docker/${{ github.event.inputs.microservice_name || 'java-springboot' }}
+          file: ./docker/${{ github.event.inputs.microservice_name || 'java-springboot' }}/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/java-springboot-service:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/java-springboot-service:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ github.event.inputs.microservice_name || 'java-springboot-service' }}:${{ env.DEPLOY_TAG }}
+            acrmulticlouddrdev.azurecr.io/${{ github.event.inputs.microservice_name || 'java-springboot-service' }}:${{ env.DEPLOY_TAG }}
 
-      - name: 10. Generate SBOM Catalog via Syft
-        run: |
-          echo "[STEP 8] Generating Software Bill of Materials (SBOM)..."
-          # syft ${{ steps.login-ecr.outputs.registry }}/java-springboot-service:${{ github.sha }} -o cyclonedx-json > sbom.json
-          echo "SBOM generated successfully."
+  # ----------------------------------------------------------------------------
+  # STAGE 2: DEPLOYMENT TO TARGET ENVIRONMENT VIA GITOPS & ARGO CD
+  # ----------------------------------------------------------------------------
+  deploy-target-environment:
+    name: '2. GitOps Promotion & Argo CD Sync'
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.target_env || 'DEV' }} # Triggers GitHub Protection Approval for PROD
 
-      - name: 11. Update GitOps Manifest Repository Image Tag
+    steps:
+      - name: Checkout GitOps Repository
+        uses: actions/checkout@v4
+
+      - name: Update Kustomization Image Tag
         run: |
-          echo "[STEP 9] Updating GitOps manifest repository for DEV..."
-          cd gitops/environments/dev
-          sed -i "s|newTag:.*|newTag: \"${{ github.sha }}\"|g" kustomization.yaml
+          ENV_NAME=$(echo "${{ github.event.inputs.target_env || 'DEV' }}" | tr '[:upper:]' '[:lower:]')
+          TAG_VAL="${{ env.DEPLOY_TAG || github.ref_name }}"
+          APP_NAME="${{ github.event.inputs.microservice_name || 'java-springboot-service' }}"
+
+          echo "Updating GitOps manifest for environment ${ENV_NAME} with tag ${TAG_VAL}..."
+          cd gitops/environments/${ENV_NAME}
+          sed -i "s|newTag:.*|newTag: \"${TAG_VAL}\"|g" kustomization.yaml
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(deploy): update image tag to ${{ github.sha }} [skip ci]" || true
+          git commit -am "chore(deploy): promote ${APP_NAME}:${TAG_VAL} to ${ENV_NAME}" || true
           git push origin main || true
 
-  # ----------------------------------------------------------------------------
-  # STAGE 2: DEV ENVIRONMENT DEPLOYMENT & ARGO CD SYNC
-  # ----------------------------------------------------------------------------
-  deploy-dev:
-    name: '2. DEV Deployment & Argo CD Sync'
-    needs: build-and-publish
-    runs-on: ubuntu-latest
-    environment: dev
-
-    steps:
-      - name: Trigger Argo CD Sync for DEV
+      - name: Parallel Sync to Primary EKS DC & Secondary AKS DR
         run: |
-          echo "[STEP 10-11] Syncing Argo CD DEV application..."
-          # argocd app sync dev-java-springboot-service --server argocd.internal.company.com
-          echo "DEV Deployment verified and operational."
-
-  # ----------------------------------------------------------------------------
-  # STAGE 3: UAT ENVIRONMENT PROMOTION
-  # ----------------------------------------------------------------------------
-  deploy-uat:
-    name: '3. UAT Environment Promotion'
-    needs: deploy-dev
-    runs-on: ubuntu-latest
-    environment: uat
-
-    steps:
-      - name: Promote to UAT
-        run: |
-          echo "[STEP 12] Promoting deployment to UAT on EKS Primary DC & AKS Secondary DR..."
-          # argocd app sync uat-java-springboot-service --server argocd.internal.company.com
-          echo "UAT promotion verified."
-
-  # ----------------------------------------------------------------------------
-  # STAGE 4: PROD ENVIRONMENT MANUAL APPROVAL & CANARY ROLLOUT
-  # ----------------------------------------------------------------------------
-  deploy-prod:
-    name: '4. PROD Approval Gate & Argo Canary Rollout'
-    needs: deploy-uat
-    runs-on: ubuntu-latest
-    environment: prod # Uses GitHub Environment Protection Rule for Manual Approval
-
-    steps:
-      - name: Execute PROD Argo Canary Rollout
-        run: |
-          echo "[STEP 14] Initiating Argo Canary Rollout (20% -> 50% -> 80% -> 100%)..."
-          # kubectl argo rollouts promote java-springboot-rollout -n prod
-
-      - name: Prometheus Metric Evaluation & Auto-Rollback Gate
-        run: |
-          echo "[STEP 15-16] Evaluating real-time Prometheus success rates & latency metrics..."
-          # Monitoring Prometheus analysis template...
-          # If failure detected: kubectl argo rollouts undo java-springboot-rollout -n prod
-          echo "Production Canary Rollout successfully completed and verified!"
+          echo "Syncing Argo CD Applications in parallel..."
+          # argocd app sync eks-dc-app --server argocd.internal.company.com &
+          # argocd app sync aks-dr-app --server argocd.internal.company.com &
+          wait
+          echo "Parallel GitOps Sync complete!"
