@@ -220,6 +220,8 @@ multicloud-dc-dr-deployment/
 │   │   ├── azure_redis/                     # Azure Cache for Redis/Valkey (Premium Multi-AZ + TLS 1.2)
 │   │   ├── azure_blob_storage/              # Azure Blob Storage (GZRS Multi-AZ + Key Vault CMK + HTTPS)
 │   │   ├── acr/                             # Azure Container Registry (Premium + Zone Redundancy + CMK)
+│   │   ├── aws_iam/                         # AWS IAM & RBAC Module (DevOps, Developer, Auditor Groups & Workload Roles)
+│   │   ├── azure_entra_id/                  # Microsoft Entra ID & Azure RBAC Module (Entra Groups, Service Principals, Role Assignments)
 │   │   ├── kafka_mm2/                       # Strimzi Kafka Operator & MirrorMaker 2 Module for DC-DR Sync
 │   │   └── elasticsearch/                   # ECK Operator & ES Module for Cross-Cluster Replication (CCR)
 │   └── environments/

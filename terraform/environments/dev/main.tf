@@ -22,6 +22,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.90"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.47"
+    }
     tls = {
       source  = "hashicorp/tls"
       version = "~> 4.0"
@@ -44,13 +48,32 @@ provider "azurerm" {
   features {}
 }
 
+provider "azuread" {}
+
 # ------------------------------------------------------------------------------
-# 0. AZURE RESOURCE GROUP
+# 0. AZURE RESOURCE GROUP & ENTERPRISE IAM / ENTRA ID IDENTITIES
 # ------------------------------------------------------------------------------
 resource "azurerm_resource_group" "rg" {
   name     = var.azure_resource_group
   location = var.azure_location
   tags     = local.common_tags
+}
+
+module "aws_iam" {
+  source = "../../modules/aws_iam"
+
+  company_prefix = "multicloud"
+  environment    = var.environment
+  tags           = local.common_tags
+}
+
+module "azure_entra_id" {
+  source = "../../modules/azure_entra_id"
+
+  company_prefix    = "multicloud"
+  resource_group_id = azurerm_resource_group.rg.id
+  environment       = var.environment
+  tags              = local.common_tags
 }
 
 # ------------------------------------------------------------------------------
