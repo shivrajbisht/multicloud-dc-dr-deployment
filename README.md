@@ -75,7 +75,7 @@ cd terraform/environments/dev
 ```
 
 #### A. AWS VPC Module (`modules/vpc`) Change:
-Agar aapne Subnets, NAT Gateways ya Route Tables change kiye hain:
+If subnets, NAT Gateways, or Route Tables were modified:
 ```bash
 # 1. Format & Validate
 terraform fmt -recursive ../../modules/vpc
@@ -89,7 +89,7 @@ terraform apply -target=module.vpc -auto-approve
 ```
 
 #### B. AWS EKS Cluster Module (`modules/eks`) Change:
-Agar aapne K8s version, Node Groups, ya Spot/On-Demand instance types change kiye hain:
+If Kubernetes version, Node Groups, or Spot/On-Demand instance types were modified:
 ```bash
 # Targeted Plan & Apply for EKS only
 terraform plan -target=module.eks_dc_cluster
@@ -97,7 +97,7 @@ terraform apply -target=module.eks_dc_cluster -auto-approve
 ```
 
 #### C. Azure VNet & AKS Cluster Modules (`modules/azure_vnet` / `modules/aks`) Change:
-Agar aapne Azure DR VNet ya AKS scale sets modify kiye hain:
+If Azure DR VNet or AKS scale sets were modified:
 ```bash
 # Targeted Apply for Azure VNet & AKS
 terraform plan -target=module.azure_vnet -target=module.aks_dr_cluster
@@ -105,7 +105,7 @@ terraform apply -target=module.azure_vnet -target=module.aks_dr_cluster -auto-ap
 ```
 
 #### D. Load Balancer Modules (`modules/alb` / `modules/azure_app_gateway`) Change:
-Agar aapne AWS ALB SSL Cert, Target Group IP routing, ya Azure App Gateway probe change kiya hai:
+If AWS ALB SSL certificates, Target Group IP routing, or Azure App Gateway health probes were modified:
 ```bash
 # Target AWS ALB
 terraform apply -target=module.alb -auto-approve
@@ -115,7 +115,7 @@ terraform apply -target=module.azure_app_gateway -auto-approve
 ```
 
 #### E. Security Groups & NSGs (`modules/security_groups` / `modules/azure_nsg`) Change:
-Agar aapne allowed CIDRs, SSH ports, ya Database port rules modify kiye hain:
+If allowed CIDRs, SSH ports, or Database port rules were modified:
 ```bash
 terraform apply -target=module.security_groups -target=module.azure_nsg -auto-approve
 ```
@@ -124,7 +124,7 @@ terraform apply -target=module.security_groups -target=module.azure_nsg -auto-ap
 
 ### 2. Ansible Role-Specific Execution Commands
 
-Agar aapne kisi specific Ansible security role me change kiya hai:
+If a specific Ansible security role was modified:
 
 ```bash
 cd ansible
@@ -184,7 +184,7 @@ docker build -t python-service:local ./docker/python-app
 
 ### 4. GitOps Manifest Local Validation
 
-Agar aapne Kustomize overlays ya Argo Rollouts manifests modify kiye hain:
+If Kustomize overlays or Argo Rollouts manifests were modified:
 
 ```bash
 # Validate DEV overlay rendering locally
