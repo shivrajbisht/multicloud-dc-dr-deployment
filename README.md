@@ -272,15 +272,21 @@ To prevent uncommitted manual out-of-band changes in the AWS Console or Azure Po
 
 ---
 
-## 🔒 Security, Subnet Isolation & Lifecycle Safeguards
+## 🔒 Security, Subnet Isolation, Custom Validations & Lifecycle Safeguards
 
-1. **Strict Private Subnet Isolation:**
+1. **Enterprise Custom Validation Framework (All 27 Modules):**
+   - **Input Schema & Format Validation (`variables.tf`):** Every input variable across all 27 reusable modules includes strict Terraform `validation` blocks enforcing IPv4 CIDR structures (`can(cidrnetmask(...))`), resource regex naming standards, allowed region lists, port ranges (1-65535), and password complexity requirements (>= 12 chars, uppercase, lowercase, numeric).
+   - **Runtime Compliance Guards (`main.tf`):** Resources enforce `lifecycle` `precondition` and `postcondition` blocks to validate live infrastructure states:
+     - **Security Postconditions:** Enforces `disable_password_authentication == true` (Azure VM), `scan_on_push == true` (AWS ECR), `enable_https_traffic_only == true` (Azure Blob), `http_tokens == "required"` (AWS EC2 IMDSv2), and `minimum_tls_version == "1.2"` (Redis/Valkey).
+     - **High Availability Preconditions:** Validates multi-AZ subnet distribution, minimum node counts (`system_node_pool.node_count >= 3` for AKS/EKS and master quorum >= 3 for Elasticsearch).
+
+2. **Strict Private Subnet Isolation:**
    - EKS Worker Nodes, RDS PostgreSQL, ElastiCache Valkey, AKS Scale Sets, Azure Flexible PostgreSQL, and Azure Redis are deployed strictly inside **Private Subnets**.
    - Public IPs are completely disabled for internal database and cluster worker nodes.
    - Database ingress is limited exclusively to EKS/AKS worker security groups on ports `5432` (PostgreSQL) and `6379` (Valkey/Redis).
 
-2. **Terraform Lifecycle Protection (`lifecycle` blocks):**
-   - Stateful and sensitive resources (`aws_db_instance`, `azurerm_postgresql_flexible_server`, `aws_s3_bucket`, `azurerm_storage_account`, `aws_eks_cluster`, `azurerm_kubernetes_cluster`, `azurerm_application_gateway`) incorporate explicit `lifecycle` blocks:
+3. **Terraform Lifecycle Protection (`lifecycle` blocks):**
+   - Stateful and sensitive resources (`aws_db_instance`, `azurerm_postgresql_flexible_server`, `aws_s3_bucket`, `azurerm_storage_account`, `aws_eks_cluster`, `azurerm_kubernetes_cluster`, `azurerm_application_gateway`) incorporate explicit `lifecycle` safeguards:
      ```hcl
      lifecycle {
        prevent_destroy = true  # Prevents accidental deletion of database or storage states

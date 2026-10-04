@@ -74,6 +74,18 @@ resource "aws_lb" "alb" {
       "elbv2.k8s.aws/pod-readiness-gate-inject"       = "enabled"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.public_subnet_ids) >= 2
+      error_message = "HIGH AVAILABILITY PRECONDITION FAILURE: ALB requires at least 2 public subnet IDs in distinct Availability Zones."
+    }
+    postcondition {
+      condition     = self.load_balancer_type == "application" && self.internal == false
+      error_message = "POSTCONDITION FAILURE: Created load balancer must be an external Application Load Balancer."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

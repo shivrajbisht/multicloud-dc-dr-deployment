@@ -35,6 +35,18 @@ resource "azurerm_cdn_frontdoor_profile" "frontdoor" {
       Role        = "Global-FrontDoor-CDN"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.dc_eks_ingress_host) > 0 && length(var.dr_aks_ingress_host) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: Primary DC and Secondary DR ingress host endpoints cannot be empty."
+    }
+    postcondition {
+      condition     = self.sku_name == "Standard_AzureFrontDoor" || self.sku_name == "Premium_AzureFrontDoor"
+      error_message = "POSTCONDITION FAILURE: Front Door SKU must be Standard or Premium."
+    }
+  }
 }
 
 resource "azurerm_cdn_frontdoor_endpoint" "endpoint" {

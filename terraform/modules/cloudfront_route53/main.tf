@@ -82,6 +82,18 @@ resource "aws_cloudfront_distribution" "cdn" {
       Environment = var.environment
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.s3_bucket_origin_domain) > 0
+      error_message = "PRECONDITION FAILURE: s3_bucket_origin_domain must be specified for CloudFront distribution origin."
+    }
+    postcondition {
+      condition     = self.enabled == true && self.is_ipv6_enabled == true
+      error_message = "POSTCONDITION FAILURE: CloudFront distribution must be enabled with IPv6 enabled."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

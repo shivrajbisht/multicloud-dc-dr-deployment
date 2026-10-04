@@ -157,4 +157,16 @@ resource "azurerm_network_security_group" "db_nsg" {
   }
 
   tags = merge(local.common_tags, { Name = "${var.environment}-db-subnet-nsg" })
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = can(cidrnetmask(var.vnet_cidr))
+      error_message = "PRECONDITION FAILURE: vnet_cidr must be a valid IPv4 CIDR string."
+    }
+    postcondition {
+      condition     = length(self.security_rule) >= 2
+      error_message = "POSTCONDITION FAILURE: DB NSG must contain strict ingress security rules."
+    }
+  }
 }

@@ -68,6 +68,18 @@ resource "azurerm_storage_account" "storage" {
       Security    = "CMK-GZRS-Encrypted"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.storage_account_name) >= 3 && length(var.storage_account_name) <= 24
+      error_message = "PRECONDITION FAILURE: storage_account_name length must be between 3 and 24 characters."
+    }
+    postcondition {
+      condition     = self.enable_https_traffic_only == true && self.allow_nested_items_to_be_public == false
+      error_message = "SECURITY POSTCONDITION FAILURE: HTTPS traffic only must be enabled and public blob access disabled."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

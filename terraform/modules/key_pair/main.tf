@@ -54,6 +54,18 @@ resource "aws_key_pair" "ec2_key_pair" {
       ManagedBy   = "Terraform"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.key_name) > 0
+      error_message = "PRECONDITION FAILURE: key_name cannot be empty."
+    }
+    postcondition {
+      condition     = self.key_name == "${var.key_name}-${var.environment}"
+      error_message = "POSTCONDITION FAILURE: Created EC2 Key Pair name does not match expected format."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

@@ -63,6 +63,18 @@ resource "aws_ecr_repository" "repo" {
       Security    = "CMK-Encrypted"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.repository_name) > 0
+      error_message = "PRECONDITION FAILURE: repository_name cannot be empty."
+    }
+    postcondition {
+      condition     = self.image_scanning_configuration[0].scan_on_push == true
+      error_message = "SECURITY POSTCONDITION FAILURE: ECR image scan_on_push must be TRUE."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

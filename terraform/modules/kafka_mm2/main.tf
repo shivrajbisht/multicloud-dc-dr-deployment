@@ -33,6 +33,18 @@ resource "kubernetes_namespace" "kafka_ns" {
       "component"                    = "kafka-dc-dr-replication"
     }
   }
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.dc_cluster_bootstrap_server) > 0 && length(var.dr_cluster_bootstrap_server) > 0
+      error_message = "PRECONDITION FAILURE: Primary DC and Secondary DR Kafka bootstrap servers cannot be empty."
+    }
+    postcondition {
+      condition     = self.metadata[0].name == var.namespace
+      error_message = "POSTCONDITION FAILURE: Created Kubernetes namespace does not match requested namespace."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

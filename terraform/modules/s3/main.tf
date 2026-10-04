@@ -53,6 +53,18 @@ resource "aws_s3_bucket" "bucket" {
       Security    = "CMK-Encrypted-TLS-Enforced"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.bucket_name) >= 3 && length(var.bucket_name) <= 63
+      error_message = "PRECONDITION FAILURE: S3 bucket_name length must be between 3 and 63 characters."
+    }
+    postcondition {
+      condition     = self.bucket == var.bucket_name
+      error_message = "POSTCONDITION FAILURE: Created S3 bucket name does not match requested bucket_name."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

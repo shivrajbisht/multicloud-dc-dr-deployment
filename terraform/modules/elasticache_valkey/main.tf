@@ -134,4 +134,16 @@ resource "aws_elasticache_replication_group" "valkey" {
       Security    = "Fully-Encrypted-CMK-TLS"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.subnet_ids) >= 2
+      error_message = "PRECONDITION FAILURE: Valkey replication group requires at least 2 subnets for Multi-AZ deployment."
+    }
+    postcondition {
+      condition     = self.at_rest_encryption_enabled == true && self.transit_encryption_enabled == true
+      error_message = "SECURITY POSTCONDITION FAILURE: Both at_rest_encryption_enabled and transit_encryption_enabled must be TRUE."
+    }
+  }
 }

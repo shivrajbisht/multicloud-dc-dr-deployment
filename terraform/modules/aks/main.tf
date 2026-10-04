@@ -106,6 +106,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
       Role        = "Kubernetes-DR-Cluster"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = var.system_node_pool.node_count >= 3
+      error_message = "SECURITY PRECONDITION FAILURE: AKS System Node Pool requires at least 3 nodes for High Availability across Availability Zones."
+    }
+    postcondition {
+      condition     = self.oidc_issuer_enabled == true && self.workload_identity_enabled == true
+      error_message = "SECURITY POSTCONDITION FAILURE: Azure Workload Identity and OIDC Issuer must be enabled for pod security."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

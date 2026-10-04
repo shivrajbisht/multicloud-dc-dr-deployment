@@ -102,6 +102,18 @@ resource "aws_eks_cluster" "main" {
       Role        = "Kubernetes-ControlPlane"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.private_subnet_ids) == 3
+      error_message = "SECURITY PRECONDITION FAILURE: EKS Control Plane requires exactly 3 private subnets across distinct AZs for HA."
+    }
+    postcondition {
+      condition     = self.vpc_config[0].endpoint_private_access == true
+      error_message = "SECURITY POSTCONDITION FAILURE: EKS Control Plane private endpoint access must be enabled."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

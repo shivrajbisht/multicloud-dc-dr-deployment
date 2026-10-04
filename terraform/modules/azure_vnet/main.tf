@@ -32,6 +32,18 @@ resource "azurerm_virtual_network" "vnet" {
   address_space       = var.vnet_address_space
 
   tags = merge(local.common_tags, { Name = "${var.vnet_name}-${var.environment}" })
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.vnet_address_space) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: vnet_address_space must contain at least one valid CIDR block."
+    }
+    postcondition {
+      condition     = length(self.address_space) > 0
+      error_message = "POSTCONDITION FAILURE: Created Virtual Network must have a non-empty address space."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

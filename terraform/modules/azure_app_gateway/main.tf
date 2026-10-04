@@ -115,6 +115,14 @@ resource "azurerm_application_gateway" "appgw" {
   )
 
   lifecycle {
+    precondition {
+      condition     = length(var.subnet_id) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: Application Gateway requires a valid subnet_id."
+    }
+    postcondition {
+      condition     = self.sku[0].capacity >= 1
+      error_message = "POSTCONDITION FAILURE: Application Gateway capacity must be at least 1 instance."
+    }
     ignore_changes = [
       tags["appgw.ingress.k8s.io/managed-by"],
       backend_address_pool,

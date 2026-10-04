@@ -129,6 +129,18 @@ resource "azurerm_linux_virtual_machine" "vm" {
   boot_diagnostics {}
 
   tags = local.common_tags
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = var.os_disk_size_gb >= 30
+      error_message = "SECURITY PRECONDITION FAILURE: Azure VM OS disk size must be at least 30 GB."
+    }
+    postcondition {
+      condition     = self.disable_password_authentication == true
+      error_message = "SECURITY POSTCONDITION FAILURE: Azure VM password authentication must be disabled (SSH key only)."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

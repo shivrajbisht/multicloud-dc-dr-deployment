@@ -86,6 +86,14 @@ resource "azurerm_postgresql_flexible_server" "postgres" {
   )
 
   lifecycle {
+    precondition {
+      condition     = var.subnet_id != ""
+      error_message = "SECURITY PRECONDITION FAILURE: Azure PostgreSQL Flexible Server must be delegated to a valid VNet subnet_id."
+    }
+    postcondition {
+      condition     = self.administrator_login != ""
+      error_message = "POSTCONDITION FAILURE: Administrator login username must be set."
+    }
     ignore_changes = [
       administrator_password,
       zone

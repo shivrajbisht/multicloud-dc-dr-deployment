@@ -186,6 +186,14 @@ resource "aws_db_instance" "postgres" {
   )
 
   lifecycle {
+    precondition {
+      condition     = var.allocated_storage >= 20
+      error_message = "SECURITY PRECONDITION FAILURE: RDS PostgreSQL storage must be at least 20 GB."
+    }
+    postcondition {
+      condition     = self.storage_encrypted == true && self.publicly_accessible == false
+      error_message = "SECURITY POSTCONDITION FAILURE: RDS storage must be KMS CMK encrypted and publicly_accessible must be FALSE."
+    }
     ignore_changes = [
       password,
       latest_restorable_time

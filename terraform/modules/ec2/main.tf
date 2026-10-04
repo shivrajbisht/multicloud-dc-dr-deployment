@@ -110,6 +110,14 @@ resource "aws_instance" "ec2" {
   tags = local.common_tags
 
   lifecycle {
+    precondition {
+      condition     = var.root_volume_size_gb >= 20
+      error_message = "SECURITY PRECONDITION FAILURE: EC2 root volume size must be at least 20 GB."
+    }
+    postcondition {
+      condition     = self.metadata_options[0].http_tokens == "required"
+      error_message = "SECURITY POSTCONDITION FAILURE: IMDSv2 (http_tokens = required) must be enforced on EC2 instances."
+    }
     # Prevent accidental termination of production instances
     ignore_changes = [ami] # Don't destroy instance on AMI refresh
   }

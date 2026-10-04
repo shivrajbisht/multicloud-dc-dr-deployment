@@ -44,6 +44,18 @@ resource "aws_vpc" "main" {
       Name = "${var.vpc_name}-${var.environment}"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = can(cidrhost(var.vpc_cidr, 0))
+      error_message = "SECURITY PRECONDITION FAILURE: VPC CIDR block must be valid and host-addressable."
+    }
+    postcondition {
+      condition     = self.enable_dns_support == true && self.enable_dns_hostnames == true
+      error_message = "SECURITY POSTCONDITION FAILURE: VPC DNS support and DNS hostnames must both be enabled for EKS/RDS endpoint resolution."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

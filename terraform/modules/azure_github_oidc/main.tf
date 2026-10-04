@@ -39,6 +39,18 @@ resource "azurerm_user_assigned_identity" "identity" {
       Name = var.identity_name
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.github_org) > 0 && length(var.github_repo) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: github_org and github_repo must not be empty for Azure OIDC."
+    }
+    postcondition {
+      condition     = self.name == var.identity_name
+      error_message = "POSTCONDITION FAILURE: Created identity name does not match requested identity_name."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

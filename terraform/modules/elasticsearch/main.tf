@@ -32,6 +32,18 @@ resource "kubernetes_namespace" "elastic_ns" {
       "component"                    = "elasticsearch-dc-dr"
     }
   }
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = var.node_count >= 3
+      error_message = "PRECONDITION FAILURE: Elasticsearch cluster requires at least 3 nodes for master quorum HA."
+    }
+    postcondition {
+      condition     = self.metadata[0].name == var.namespace
+      error_message = "POSTCONDITION FAILURE: Created Kubernetes namespace does not match requested namespace."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

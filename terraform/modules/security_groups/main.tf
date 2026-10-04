@@ -169,6 +169,18 @@ resource "aws_security_group" "rds" {
   }
 
   tags = merge(local.common_tags, { Name = "${var.environment}-rds-pg-sg" })
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = can(cidrnetmask(var.vpc_cidr))
+      error_message = "PRECONDITION FAILURE: vpc_cidr must be a valid IPv4 CIDR string."
+    }
+    postcondition {
+      condition     = length(self.ingress) >= 2
+      error_message = "POSTCONDITION FAILURE: RDS Security Group must restrict ingress strictly to authorized application security groups."
+    }
+  }
 }
 
 # ------------------------------------------------------------------------------

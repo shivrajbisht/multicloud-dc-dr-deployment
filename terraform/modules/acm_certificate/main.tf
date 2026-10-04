@@ -39,6 +39,14 @@ resource "aws_acm_certificate" "cert" {
 
   lifecycle {
     create_before_destroy = true
+    precondition {
+      condition     = length(var.domain_name) > 0
+      error_message = "PRECONDITION FAILURE: Certificate domain_name cannot be empty."
+    }
+    postcondition {
+      condition     = self.validation_method == "DNS"
+      error_message = "POSTCONDITION FAILURE: Certificate validation_method must be DNS for automated record management."
+    }
   }
 
   tags = merge(

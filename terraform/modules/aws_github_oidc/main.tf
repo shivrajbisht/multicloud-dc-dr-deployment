@@ -79,6 +79,18 @@ resource "aws_iam_role" "github_actions_role" {
       Name = var.role_name
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.github_org) > 0 && length(var.github_repo) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: github_org and github_repo must not be empty for OIDC trust scoping."
+    }
+    postcondition {
+      condition     = self.name == var.role_name
+      error_message = "POSTCONDITION FAILURE: Created IAM role name does not match requested role_name."
+    }
+  }
 }
 
 # Attach Administrator / Deployment Permissions to Role

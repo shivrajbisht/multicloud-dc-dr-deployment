@@ -49,4 +49,16 @@ resource "azurerm_redis_cache" "redis" {
       Security    = "Encrypted-TLS1.2-MultiAZ"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = var.capacity >= 1
+      error_message = "SECURITY PRECONDITION FAILURE: Redis capacity must be at least 1."
+    }
+    postcondition {
+      condition     = self.enable_non_ssl_port == false && self.minimum_tls_version == "1.2"
+      error_message = "SECURITY POSTCONDITION FAILURE: non-SSL port must be disabled and TLS version 1.2 enforced."
+    }
+  }
 }

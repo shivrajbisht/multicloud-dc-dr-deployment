@@ -70,4 +70,16 @@ resource "azurerm_container_registry" "acr" {
       Security    = "CMK-Premium-ZoneRedundant"
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.key_vault_key_id) > 0
+      error_message = "SECURITY PRECONDITION FAILURE: ACR requires a valid Azure Key Vault Key ID for CMK encryption."
+    }
+    postcondition {
+      condition     = self.admin_enabled == false && self.sku == "Premium"
+      error_message = "SECURITY POSTCONDITION FAILURE: ACR admin_enabled must be FALSE and SKU must be Premium."
+    }
+  }
 }

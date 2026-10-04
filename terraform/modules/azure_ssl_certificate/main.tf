@@ -70,4 +70,16 @@ resource "azurerm_key_vault_certificate" "ssl_cert" {
       Name = var.certificate_name
     }
   )
+
+  # --- COMPLIANCE & RECOVERY LIFECYCLE PRE/POST CONDITIONS ---
+  lifecycle {
+    precondition {
+      condition     = length(var.dns_names) > 0
+      error_message = "PRECONDITION FAILURE: dns_names list cannot be empty for SSL certificate generation."
+    }
+    postcondition {
+      condition     = self.name == var.certificate_name
+      error_message = "POSTCONDITION FAILURE: Created certificate name does not match requested certificate_name."
+    }
+  }
 }
