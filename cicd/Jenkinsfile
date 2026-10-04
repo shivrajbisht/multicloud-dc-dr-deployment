@@ -19,7 +19,7 @@ pipeline {
     parameters {
         choice(
             name: 'TARGET_ENVIRONMENT',
-            choices: ['DEV', 'UAT', 'PROD'],
+            choices: ['dev', 'uat', 'prod'],
             description: 'Target Environment for Deployment / Promotion'
         )
         string(
@@ -64,7 +64,7 @@ pipeline {
             steps {
                 echo "[STEP 1] Validating deployment parameters for environment: ${params.TARGET_ENVIRONMENT}..."
                 script {
-                    if (params.TARGET_ENVIRONMENT in ['UAT', 'PROD'] && (params.RELEASE_TAG == '' || !params.RELEASE_TAG.startsWith('v'))) {
+                    if (params.TARGET_ENVIRONMENT.toLowerCase() in ['uat', 'prod'] && (params.RELEASE_TAG == '' || !params.RELEASE_TAG.startsWith('v'))) {
                         error("SECURITY ENFORCEMENT FAILURE: Promotion to ${params.TARGET_ENVIRONMENT} requires an immutable Release Tag starting with 'v' (e.g. v1.0.0). Received: '${params.RELEASE_TAG}'")
                     }
                     env.DEPLOY_TAG = params.RELEASE_TAG != '' ? params.RELEASE_TAG : "dev-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
@@ -137,7 +137,7 @@ pipeline {
         // ----------------------------------------------------------------------
         stage('4. Production Release Approval Gate') {
             when {
-                expression { params.TARGET_ENVIRONMENT == 'PROD' }
+                expression { params.TARGET_ENVIRONMENT.toLowerCase() == 'prod' }
             }
             steps {
                 echo "[STEP 4] Pausing pipeline for mandatory Release Manager approval..."

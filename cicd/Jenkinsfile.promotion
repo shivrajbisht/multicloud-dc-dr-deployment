@@ -21,7 +21,7 @@ pipeline {
     parameters {
         choice(
             name: 'TARGET_ENVIRONMENT',
-            choices: ['UAT', 'PROD'],
+            choices: ['uat', 'prod'],
             description: 'Target Environment for Container Image Promotion'
         )
         string(
@@ -93,7 +93,7 @@ pipeline {
         // ----------------------------------------------------------------------
         stage('3. Production Approval Gate') {
             when {
-                expression { params.TARGET_ENVIRONMENT == 'PROD' }
+                expression { params.TARGET_ENVIRONMENT.toLowerCase() == 'prod' }
             }
             steps {
                 echo "[STEP 3] Halting pipeline for explicit Release Manager approval..."

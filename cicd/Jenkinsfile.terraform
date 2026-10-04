@@ -132,7 +132,7 @@ pipeline {
         // ----------------------------------------------------------------------
         stage('4. Production / Destruction Approval Gate') {
             when {
-                expression { params.ACTION in ['apply', 'destroy'] && (params.TARGET_ENVIRONMENT in ['PROD', 'UAT'] || params.ACTION == 'destroy') }
+                expression { params.ACTION in ['apply', 'destroy'] && (params.TARGET_ENVIRONMENT.toLowerCase() in ['uat', 'prod'] || params.ACTION == 'destroy') }
             }
             steps {
                 echo "[STEP 4] Pausing pipeline for mandatory Lead DevOps / Release Manager approval..."
