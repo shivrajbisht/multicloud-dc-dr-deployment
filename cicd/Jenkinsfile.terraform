@@ -1,0 +1,182 @@
+// ==============================================================================
+// ENTERPRISE MULTI-CLOUD TERRAFORM INFRASTRUCTURE JENKINS PIPELINE
+// ==============================================================================
+// Features:
+// 1. Build With Parameters (Interactive User Input for Future Operations):
+//    - ACTION: 'plan', 'apply', 'destroy'
+//    - TARGET_ENVIRONMENT: 'dev', 'uat', 'staging', 'prod'
+//    - TARGET_RESOURCE: '-target=<address>' (e.g., module.vpc, module.ec2_bastion.aws_instance.ec2)
+//    - REPLACE_RESOURCE: '-replace=<address>' (e.g., module.ec2_bastion.aws_instance.ec2)
+//    - EXTRA_ARGS: Extra CLI flags (e.g., -destroy, -refresh-only)
+//    - CONFIRM_DESTRUCTION: Security checkbox guard for destroy operations
+// 2. Interactive Approval Gate for PROD & Destroy Operations
+// 3. Dynamic CLI Command Construction & OIDC Authentication
+// ==============================================================================
+
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'apply', 'destroy'],
+            description: 'Terraform Execution Action'
+        )
+        choice(
+            name: 'TARGET_ENVIRONMENT',
+            choices: ['dev', 'uat', 'staging', 'prod'],
+            description: 'Target Deployment Environment (dev, uat, staging, prod)'
+        )
+        string(
+            name: 'TARGET_RESOURCE',
+            defaultValue: '',
+            description: 'Optional: Target specific module/resource (e.g., module.vpc, module.ec2_bastion.aws_instance.ec2)'
+        )
+        string(
+            name: 'REPLACE_RESOURCE',
+            defaultValue: '',
+            description: 'Optional: Force replace specific resource during apply (e.g., module.ec2_bastion.aws_instance.ec2)'
+        )
+        string(
+            name: 'EXTRA_ARGS',
+            defaultValue: '',
+            description: 'Optional: Additional raw Terraform CLI arguments (e.g., -destroy, -refresh-only)'
+        )
+        booleanParam(
+            name: 'CONFIRM_DESTRUCTION',
+            defaultValue: false,
+            description: 'MANDATORY: Check this box to confirm DESTROY action or -destroy flag (Security Safeguard)'
+        )
+    }
+
+    environment {
+        AWS_ACCOUNT_ID    = '123456789012'
+        AWS_REGION        = 'us-east-1'
+        AWS_OIDC_ROLE_ARN = 'arn:aws:iam::123456789012:role/JenkinsOIDCExecutionRole'
+    }
+
+    options {
+        timeout(time: 2, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '50'))
+        ansiColor('xterm')
+    }
+
+    stages {
+        // ----------------------------------------------------------------------
+        // STAGE 1: VALIDATION & DESTRUCTION SAFEGUARD
+        // ----------------------------------------------------------------------
+        stage('1. Parameter Validation & Security Gate') {
+            steps {
+                echo "[STEP 1] Validating Terraform Action '${params.ACTION}' for Environment '${params.TARGET_ENVIRONMENT}'..."
+                script {
+                    if (params.ACTION == 'destroy' || params.EXTRA_ARGS.contains('-destroy')) {
+                        if (!params.CONFIRM_DESTRUCTION) {
+                            error("SECURITY DESTRUCTION SAFEGUARD FAILURE: Destruction operations require checking 'CONFIRM_DESTRUCTION' parameter!")
+                        }
+                    }
+                    env.ENV_PATH = "terraform/environments/${params.TARGET_ENVIRONMENT.toLowerCase()}"
+                    echo "Target Environment Directory: ${env.ENV_PATH}"
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // STAGE 2: TERRAFORM INIT & VALIDATION
+        // ----------------------------------------------------------------------
+        stage('2. Terraform Init & Validate') {
+            steps {
+                echo "[STEP 2] Initializing & Validating Terraform state in ${env.ENV_PATH}..."
+                dir(env.ENV_PATH) {
+                    sh "terraform init"
+                    sh "terraform validate"
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // STAGE 3: CONSTRUCT DYNAMIC TERRAFORM COMMAND & PLAN
+        // ----------------------------------------------------------------------
+        stage('3. Construct Command & Execute Plan') {
+            steps {
+                echo "[STEP 3] Constructing Terraform flags (-target, -replace, extra args)..."
+                script {
+                    def cmdFlags = ""
+                    if (params.TARGET_RESOURCE?.trim()) {
+                        cmdFlags += " -target='${params.TARGET_RESOURCE.trim()}'"
+                    }
+                    if (params.REPLACE_RESOURCE?.trim()) {
+                        cmdFlags += " -replace='${params.REPLACE_RESOURCE.trim()}'"
+                    }
+                    if (params.EXTRA_ARGS?.trim()) {
+                        cmdFlags += " ${params.EXTRA_ARGS.trim()}"
+                    }
+
+                    env.TERRAFORM_FLAGS = cmdFlags
+                    echo "Dynamic CLI Flags: ${env.TERRAFORM_FLAGS}"
+
+                    dir(env.ENV_PATH) {
+                        if (params.ACTION == 'plan') {
+                            sh "terraform plan -no-color ${env.TERRAFORM_FLAGS}"
+                        } else if (params.ACTION == 'apply') {
+                            sh "terraform plan -no-color -out=tfplan ${env.TERRAFORM_FLAGS}"
+                        } else if (params.ACTION == 'destroy') {
+                            sh "terraform plan -destroy -no-color -out=tfplan ${env.TERRAFORM_FLAGS}"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // STAGE 4: APPROVAL GATE (FOR PROD & DESTROY OPERATIONS)
+        // ----------------------------------------------------------------------
+        stage('4. Production / Destruction Approval Gate') {
+            when {
+                expression { params.ACTION in ['apply', 'destroy'] && (params.TARGET_ENVIRONMENT in ['PROD', 'UAT'] || params.ACTION == 'destroy') }
+            }
+            steps {
+                echo "[STEP 4] Pausing pipeline for mandatory Lead DevOps / Release Manager approval..."
+                input(
+                    id: 'TerraformOperationApproval',
+                    message: "Approve Terraform '${params.ACTION.toUpperCase()}' on '${params.TARGET_ENVIRONMENT}' with flags: ${env.TERRAFORM_FLAGS}?",
+                    ok: "Approve & Execute ${params.ACTION.toUpperCase()}",
+                    submitter: 'admin-devops,release-manager'
+                )
+                echo "Terraform operation approved by Authorized Personnel."
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // STAGE 5: EXECUTE TERRAFORM APPLY / DESTROY
+        // ----------------------------------------------------------------------
+        stage('5. Execute Terraform Apply / Destroy') {
+            when {
+                expression { params.ACTION in ['apply', 'destroy'] }
+            }
+            steps {
+                echo "[STEP 5] Executing Terraform ${params.ACTION.toUpperCase()}..."
+                dir(env.ENV_PATH) {
+                    script {
+                        if (params.ACTION == 'apply') {
+                            sh "terraform apply -auto-approve tfplan"
+                        } else if (params.ACTION == 'destroy') {
+                            sh "terraform apply -auto-approve tfplan"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo "SUCCESS: Terraform ${params.ACTION} executed successfully on ${params.TARGET_ENVIRONMENT}."
+        }
+        failure {
+            echo "FAILURE: Terraform pipeline operation failed."
+        }
+    }
+}

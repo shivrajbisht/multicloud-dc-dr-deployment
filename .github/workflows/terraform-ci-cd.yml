@@ -1,9 +1,14 @@
 # ==============================================================================
 # GITHUB ACTIONS WORKFLOW: TERRAFORM INFRASTRUCTURE CI/CD (OIDC AUTHENTICATED)
 # ==============================================================================
-# Triggers:
-#   - Pull Requests to 'main': Runs terraform fmt, validate & terraform plan
-#   - Push to 'main': Runs terraform apply via passwordless AWS & Azure OIDC
+# Features:
+#   - Automated CI: PRs & Push to 'main' trigger Terraform Format, Validate & Plan/Apply
+#   - Interactive Event Pipeline (workflow_dispatch):
+#     - Choose Action: 'plan', 'apply', 'destroy'
+#     - Choose Target Environment: 'dev', 'uat', 'staging', 'prod'
+#     - Target Specific Resource: -target=<address> (e.g. module.vpc)
+#     - Force Replace Resource: -replace=<address> (e.g. module.ec2_bastion.aws_instance.ec2)
+#     - Extra CLI Arguments: -destroy, -refresh-only, etc.
 # Permissions:
 #   id-token: write (MANDATORY for GitHub OIDC token exchange)
 #   contents: read
@@ -22,6 +27,47 @@ on:
       - main
     paths:
       - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform Execution Action (plan, apply, destroy)'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - 'plan'
+          - 'apply'
+          - 'destroy'
+      target_environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - 'dev'
+          - 'uat'
+          - 'staging'
+          - 'prod'
+      target_resource:
+        description: 'Optional: Target specific resource/module (e.g. module.vpc or module.ec2_bastion.aws_instance.ec2)'
+        required: false
+        default: ''
+        type: string
+      replace_resource:
+        description: 'Optional: Force replace specific resource during apply (e.g. module.ec2_bastion.aws_instance.ec2)'
+        required: false
+        default: ''
+        type: string
+      extra_args:
+        description: 'Optional: Additional raw CLI arguments (e.g. -destroy, -refresh-only)'
+        required: false
+        default: ''
+        type: string
+      confirm_destruction:
+        description: 'Check to confirm DESTROY action or -destroy flag (Security Safeguard)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write # Required for GitHub OIDC Authentication
@@ -30,9 +76,9 @@ permissions:
 
 jobs:
   terraform:
-    name: 'Terraform Plan & Apply (AWS & Azure OIDC)'
+    name: 'Terraform Plan, Apply & Destroy (AWS & Azure OIDC)'
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_environment || 'dev' }}
 
     steps:
       # ------------------------------------------------------------------------
@@ -75,29 +121,74 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive terraform/
 
+      - name: Set Active Environment
+        id: env_setup
+        run: |
+          TARGET_ENV="${{ github.event_name == 'workflow_dispatch' && inputs.target_environment || 'dev' }}"
+          echo "ENV_PATH=terraform/environments/${TARGET_ENV}" >> $GITHUB_ENV
+          echo "Selected Target Environment: ${TARGET_ENV}"
+
       - name: Terraform Init
         run: |
-          cd terraform/environments/dev
+          cd ${{ env.ENV_PATH }}
           terraform init
 
       - name: Terraform Validate
         run: |
-          cd terraform/environments/dev
+          cd ${{ env.ENV_PATH }}
           terraform validate
 
       # ------------------------------------------------------------------------
-      # STEP 6: TERRAFORM PLAN (ON PULL REQUEST OR PUSH)
+      # STEP 6: DYNAMIC TERRAFORM COMMAND CONSTRUCTION & EXECUTION
+      # Handles: -target=<resource>, -replace=<resource>, -destroy, plan, apply, destroy
       # ------------------------------------------------------------------------
-      - name: Terraform Plan
+      - name: Construct & Execute Terraform Operation
         run: |
-          cd terraform/environments/dev
-          terraform plan -no-color -out=tfplan
+          cd ${{ env.ENV_PATH }}
+          
+          # Build CLI Arguments dynamically from input parameters
+          CMD_ARGS=""
+          
+          if [ -n "${{ inputs.target_resource }}" ]; then
+            CMD_ARGS="${CMD_ARGS} -target='${{ inputs.target_resource }}'"
+          fi
+          
+          if [ -n "${{ inputs.replace_resource }}" ]; then
+            CMD_ARGS="${CMD_ARGS} -replace='${{ inputs.replace_resource }}'"
+          fi
+          
+          if [ -n "${{ inputs.extra_args }}" ]; then
+            CMD_ARGS="${CMD_ARGS} ${{ inputs.extra_args }}"
+          fi
 
-      # ------------------------------------------------------------------------
-      # STEP 7: TERRAFORM APPLY (ON MERGE TO MAIN BRANCH ONLY)
-      # ------------------------------------------------------------------------
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          cd terraform/environments/dev
-          terraform apply -auto-approve tfplan
+          EVENT_NAME="${{ github.event_name }}"
+          ACTION="${{ inputs.action }}"
+          CONFIRM_DESTROY="${{ inputs.confirm_destruction }}"
+
+          echo "Constructed Arguments: ${CMD_ARGS}"
+
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            if [ "$EVENT_NAME" == "pull_request" ]; then
+              echo "Executing Automated Pull Request Plan..."
+              terraform plan -no-color
+            elif [ "$EVENT_NAME" == "push" ]; then
+              echo "Executing Automated Main Branch Apply..."
+              terraform plan -no-color -out=tfplan
+              terraform apply -auto-approve tfplan
+            fi
+          else
+            echo "Executing Manual Interactive Action: ${ACTION}..."
+            
+            if [ "$ACTION" == "plan" ]; then
+              eval "terraform plan -no-color ${CMD_ARGS}"
+            elif [ "$ACTION" == "apply" ]; then
+              eval "terraform apply -auto-approve ${CMD_ARGS}"
+            elif [ "$ACTION" == "destroy" ]; then
+              if [ "$CONFIRM_DESTROY" != "true" ]; then
+                echo "SECURITY FAILURE: Action 'destroy' requires checking 'confirm_destruction' input box!"
+                exit 1
+              fi
+              echo "WARNING: Executing TERRAFORM DESTROY on target environment..."
+              eval "terraform destroy -auto-approve ${CMD_ARGS}"
+            fi
+          fi

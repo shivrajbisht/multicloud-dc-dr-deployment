@@ -241,13 +241,14 @@ multicloud-dc-dr-deployment/
 ├── cicd/
 │   ├── Jenkinsfile                          # Main 16-Step Build & Deploy Pipeline (Parallel Execution + Parameters)
 │   ├── Jenkinsfile.promotion                # Dedicated Container Promotion Pipeline (DEV -> UAT -> PROD)
+│   ├── Jenkinsfile.terraform                # Interactive Terraform Pipeline (plan, apply, destroy, -target, -replace, extra args)
 │   └── scripts/
 │       ├── sbom_generator.sh                # Syft/Trivy SBOM Generation Script
 │       └── gitops_update.sh                 # GitOps Repo Image Tag Updater Script
 ├── .github/workflows/
 │   ├── app-promotion-pipeline.yml          # GitHub Actions Application Build & Deploy Workflow (Parallel)
 │   ├── container-promotion.yml              # GitHub Actions Dedicated Container Promotion Workflow
-│   ├── terraform-ci-cd.yml                  # GitHub Actions Terraform CI/CD Workflow
+│   ├── terraform-ci-cd.yml                  # Interactive & Automated Terraform CI/CD Workflow (plan, apply, destroy, -target, -replace)
 │   └── terraform-drift-detection.yml        # Scheduled Automated Infrastructure Drift Detection Workflow
 
 ---
@@ -353,6 +354,30 @@ All modules in `terraform/modules/` are 100% decoupled and reusable. To create a
   - Performs OIDC token exchange with AWS & Azure.
   - Retags and syncs multi-cloud container images across ECR & ACR.
   - Updates Kustomize image tag in `gitops/environments/<env>` manifest repository.
+
+---
+
+## 🎛️ Interactive Parameterized Terraform Operations Pipeline
+
+Both **Jenkins** (`cicd/Jenkinsfile.terraform`) and **GitHub Actions** (`.github/workflows/terraform-ci-cd.yml`) support interactive, user-driven execution for future operational tasks:
+
+### Interactive Parameters:
+- **`ACTION`**: `plan`, `apply`, `destroy`
+- **`TARGET_ENVIRONMENT`**: `dev`, `uat`, `staging`, `prod`
+- **`TARGET_RESOURCE`**: Target specific resource or module (e.g. `module.vpc`, `module.ec2_bastion.aws_instance.ec2` -> translates to `-target=<address>`)
+- **`REPLACE_RESOURCE`**: Force replacement of a specific resource during apply (e.g. `module.ec2_bastion.aws_instance.ec2` -> translates to `-replace=<address>`)
+- **`EXTRA_ARGS`**: Raw CLI arguments (e.g., `-destroy`, `-refresh-only`)
+- **`CONFIRM_DESTRUCTION`**: Mandatory security checkbox guard required for any `destroy` or `-destroy` action.
+
+### 1. GitHub Actions Execution (`workflow_dispatch`):
+1. Navigate to **Actions** -> **Terraform Multi-Cloud Infrastructure CI/CD**.
+2. Click **Run workflow** and select parameters (`action`, `target_environment`, `target_resource`, `replace_resource`, `extra_args`).
+3. Click **Run workflow** to execute.
+
+### 2. Jenkins Execution (`cicd/Jenkinsfile.terraform`):
+1. Navigate to Jenkins Job -> **Build with Parameters**.
+2. Input target parameters and select `ACTION` (`plan`, `apply`, `destroy`).
+3. Interactive approval gate pauses pipeline for `PROD` or `destroy` operations.
 
 ---
 
